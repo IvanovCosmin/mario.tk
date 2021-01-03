@@ -409,6 +409,7 @@ def main():
     for trial in range(1000):
 
         pygame.init()
+        
 
         # Set the height and width of the screen
         size = [SCREEN_WIDTH, SCREEN_HEIGHT]
@@ -447,7 +448,7 @@ def main():
 
         score = 0
         COMPUTE_ONCE_EVERY = 15
-        max_x = player.rect.x
+        max_x = player.rect.x + current_level.world_shift
         begin_time = int(time.time())
         last_used_time = begin_time
         frame_counter = 0
@@ -474,30 +475,10 @@ def main():
 
                 if action == 0:
                     player.go_left()
-                    score -= 30
+                elif action == 1:
+                    player.jump()
                 elif action == 2:
                     player.go_right()
-                    score += 30
-                elif action == 1:
-                    player.jump() 
-                    score -= 5
-
-            if player.rect.y > 510:
-                score = -1000
-
-            if score < -150:
-                done = True
-                continue
-
-            if player.rect.x > max_x:
-                score += (player.rect.x - max_x)
-                max_x = player.rect.x
-
-            if player.rect.right >= 500:
-                diff = player.rect.right - 500
-                score += diff
-                max_x = player.rect.right
-
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -554,24 +535,30 @@ def main():
 
             # ALL CODE TO DRAW SHOULD GO ABOVE THIS COMMENT
 
-            print(player.rect.x)
-            print(player.rect)
-            print(max_x)
+
+            if player.rect.y > 510:
+                score = -10000
+
+            if score < -125: 
+                done = True
+
+            if current_position < max_x:
+                score += (max_x - current_position)
+                max_x = current_position
+
+
             print(score)
-            print("===========")
 
             current_time = int(time.time())
-            score += last_used_time * 20
-            score -= current_time * 20
+            score += last_used_time * 50
+            score -= current_time * 50
 
             last_used_time = current_time
 
-            print(begin_time)
-            print(last_used_time)
-            print(score)
-            print("==============================")
-
             if doing_bizniz == True:
+                if current_position > max_x:
+                    score -= 10
+
                 agent_score_delta = score - agent_last_score
 
                 new_state = pygame.surfarray.array3d(pygame.display.get_surface())
