@@ -1,23 +1,5 @@
-"""
-Sample Python/Pygame Programs
-Simpson College Computer Science
-http://programarcadegames.com/
-http://simpson.edu/computer-science/
-
-From:
-http://programarcadegames.com/python_examples/f.php?file=platform_moving.py
-
-Explanation video: http://youtu.be/YKdOD5VkY48
-
-Part of a series:
-http://programarcadegames.com/python_examples/f.php?file=move_with_walls_example.py
-http://programarcadegames.com/python_examples/f.php?file=maze_runner.py
-http://programarcadegames.com/python_examples/f.php?file=platform_jumper.py
-http://programarcadegames.com/python_examples/f.php?file=platform_scroller.py
-http://programarcadegames.com/python_examples/f.php?file=platform_moving.py
-http://programarcadegames.com/python_examples/sprite_sheets/
-"""
 import pygame
+import the_brain as ch4d
 
 # Global constants
 
@@ -420,145 +402,200 @@ class Level_02(Level):
 
 def main():
     """ Main Program """
-    pygame.init()
+    agent = ch4d.DQN(SCREEN_HEIGHT * SCREEN_WIDTH // (10 * 10), 3)
+    steps = []
+    trials = 1000
 
-    # Set the height and width of the screen
-    size = [SCREEN_WIDTH, SCREEN_HEIGHT]
-    screen = pygame.display.set_mode(size)
+    for trial in range(1000):
 
-    pygame.display.set_caption("Platformer with moving platforms")
+        pygame.init()
 
-    # Create the player
-    player = Player()
+        # Set the height and width of the screen
+        size = [SCREEN_WIDTH, SCREEN_HEIGHT]
+        screen = pygame.display.set_mode(size)
 
-    # Create all the levels
-    level_list = []
-    level_list.append(Level_01(player))
-    level_list.append(Level_02(player))
+        pygame.display.set_caption("Platformer with moving platforms")
 
-    # Set the current level
-    current_level_no = 0
-    current_level = level_list[current_level_no]
+        # Create the player
+        player = Player()
 
-    active_sprite_list = pygame.sprite.Group()
-    player.level = current_level
+        # Create all the levels
+        level_list = []
+        level_list.append(Level_01(player))
+        level_list.append(Level_02(player))
 
-    player.rect.x = 340
-    player.rect.y = SCREEN_HEIGHT - player.rect.height - LOWER_BORDER
-    active_sprite_list.add(player)
+        # Set the current level
+        current_level_no = 0
+        current_level = level_list[current_level_no]
 
-    # Loop until the user clicks the close button.
-    done = False
+        active_sprite_list = pygame.sprite.Group()
+        player.level = current_level
 
-    # Used to manage how fast the screen updates
-    clock = pygame.time.Clock()
+        player.rect.x = 340
+        player.rect.y = SCREEN_HEIGHT - player.rect.height - LOWER_BORDER
+        active_sprite_list.add(player)
 
-    import time
+        # Loop until the user clicks the close button.
+        done = False
 
-    score = 0
-    max_x = player.rect.x
-    begin_time = int(time.time())
-    last_used_time = begin_time
+        # Used to manage how fast the screen updates
+        clock = pygame.time.Clock()
+        
 
-    # -------- Main Program Loop -----------
-    while not done:
+        import time
+        import matplotlib.pyplot as plt
 
-        if score < -1000 or player.rect.y > 510:
-            done = True
-            continue
+        score = 0
+        COMPUTE_ONCE_EVERY = 15
+        max_x = player.rect.x
+        begin_time = int(time.time())
+        last_used_time = begin_time
+        frame_counter = 0
+        doing_bizniz = False
+        action = None
+        agent_last_score = None
 
-        if player.rect.x > max_x:
-            score += (player.rect.x - max_x)
-            max_x = player.rect.x
+        # -------- Main Program Loop -----------
+        while not done:
+            
+            frame_counter += 1
+            if frame_counter == COMPUTE_ONCE_EVERY:
+                frame_counter = 0
+                doing_bizniz = True
+                cur_state = pygame.surfarray.array3d(pygame.display.get_surface())
+                cur_state = ch4d.rgb2gray(cur_state)
+                cur_state = ch4d.block_mean(cur_state, 10)
+                
+                agent_last_score = score
+                action = agent.act(cur_state)
+                print("Doing: ", action)
+                if player.change_x < 0 or player.change_x > 0:
+                    player.stop()
 
-        if player.rect.right >= 500:
-            diff = player.rect.right - 500
-            score += diff
-            max_x = player.rect.right
-
-
-        print(player.rect.x)
-        print(player.rect)
-        print(max_x)
-        print(score)
-        print("===========")
-
-        current_time = int(time.time())
-        score += last_used_time * 20
-        score -= current_time * 20
-
-        last_used_time = current_time
-
-        print(begin_time)
-        print(last_used_time)
-        print(score)
-        print("==============================")
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                done = True
-
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT:
+                if action == 0:
                     player.go_left()
-                if event.key == pygame.K_RIGHT:
+                    score -= 30
+                elif action == 2:
                     player.go_right()
-                if event.key == pygame.K_UP:
-                    player.jump()
+                    score += 30
+                elif action == 1:
+                    player.jump() 
+                    score -= 5
 
-            if event.type == pygame.KEYUP:
-                if event.key == pygame.K_LEFT and player.change_x < 0:
-                    player.stop()
-                if event.key == pygame.K_RIGHT and player.change_x > 0:
-                    player.stop()
+            if player.rect.y > 510:
+                score = -1000
 
-        # Update the player.
-        active_sprite_list.update()
-
-        # Update items in the level
-        current_level.update()
-
-        # If the player gets near the right side, shift the world left (-x)
-        if player.rect.right >= 500:
-            diff = player.rect.right - 500
-            player.rect.right = 500
-            current_level.shift_world(-diff)
-
-        # If the player gets near the left side, shift the world right (+x)
-        if player.rect.left <= 120:
-            diff = 120 - player.rect.left
-            player.rect.left = 120
-            current_level.shift_world(diff)
-
-        # If the player gets to the end of the level, go to the next level
-        current_position = player.rect.x + current_level.world_shift
-        if current_position < current_level.level_limit:
-            if current_level_no < len(level_list) - 1:
-                player.rect.x = 120
-                current_level_no += 1
-                current_level = level_list[current_level_no]
-                player.level = current_level
-            else:
-                # Out of levels. This just exits the program.
-                # You'll want to do something better.
+            if score < -150:
                 done = True
+                continue
 
-        # ALL CODE TO DRAW SHOULD GO BELOW THIS COMMENT
-        current_level.draw(screen)
-        active_sprite_list.draw(screen)
+            if player.rect.x > max_x:
+                score += (player.rect.x - max_x)
+                max_x = player.rect.x
 
-        # ALL CODE TO DRAW SHOULD GO ABOVE THIS COMMENT
-
-        # Limit to 60 frames per second
-        clock.tick(60)
-
-        # Go ahead and update the screen with what we've drawn.
-        pygame.display.flip()
+            if player.rect.right >= 500:
+                diff = player.rect.right - 500
+                score += diff
+                max_x = player.rect.right
 
 
-    # Be IDLE friendly. If you forget this line, the program will 'hang'
-    # on exit.
-    pygame.quit()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    done = True
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_LEFT:
+                        player.go_left()
+                    if event.key == pygame.K_RIGHT:
+                        player.go_right()
+                    if event.key == pygame.K_UP:
+                        player.jump()
+
+                if event.type == pygame.KEYUP:
+                    if event.key == pygame.K_LEFT and player.change_x < 0:
+                        player.stop()
+                    if event.key == pygame.K_RIGHT and player.change_x > 0:
+                        player.stop()
+
+            # Update the player.
+            active_sprite_list.update()
+
+            # Update items in the level
+            current_level.update()
+
+            # If the player gets near the right side, shift the world left (-x)
+            if player.rect.right >= 500:
+                diff = player.rect.right - 500
+                player.rect.right = 500
+                current_level.shift_world(-diff)
+
+            # If the player gets near the left side, shift the world right (+x)
+            if player.rect.left <= 120:
+                diff = 120 - player.rect.left
+                player.rect.left = 120
+                current_level.shift_world(diff)
+
+            # If the player gets to the end of the level, go to the next level
+            current_position = player.rect.x + current_level.world_shift
+            if current_position < current_level.level_limit:
+                if current_level_no < len(level_list) - 1:
+                    player.rect.x = 120
+                    current_level_no += 1
+                    current_level = level_list[current_level_no]
+                    player.level = current_level
+                else:
+                    # Out of levels. This just exits the program.
+                    # You'll want to do something better.
+                    done = True
+
+            # ALL CODE TO DRAW SHOULD GO BELOW THIS COMMENT
+            current_level.draw(screen)
+            active_sprite_list.draw(screen)
+
+            # ALL CODE TO DRAW SHOULD GO ABOVE THIS COMMENT
+
+            print(player.rect.x)
+            print(player.rect)
+            print(max_x)
+            print(score)
+            print("===========")
+
+            current_time = int(time.time())
+            score += last_used_time * 20
+            score -= current_time * 20
+
+            last_used_time = current_time
+
+            print(begin_time)
+            print(last_used_time)
+            print(score)
+            print("==============================")
+
+            if doing_bizniz == True:
+                agent_score_delta = score - agent_last_score
+
+                new_state = pygame.surfarray.array3d(pygame.display.get_surface())
+                new_state = ch4d.rgb2gray(new_state)
+                new_state = ch4d.block_mean(new_state, 10)
+
+                agent.remember(cur_state, action, agent_score_delta, new_state, done)
+
+                doing_bizniz = False
+
+            # Limit to 60 frames per second
+            clock.tick(120)
+
+            # Go ahead and update the screen with what we've drawn.
+            pygame.display.flip()
+
+
+        # Be IDLE friendly. If you forget this line, the program will 'hang'
+        # on exit.
+        if done == True:
+            agent.replay()
+            agent.target_train()
+        
+        pygame.quit()
 
 
 if __name__ == "__main__":
