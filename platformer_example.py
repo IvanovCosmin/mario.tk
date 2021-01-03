@@ -463,37 +463,6 @@ def main():
     # -------- Main Program Loop -----------
     while not done:
 
-        if score < -1000 or player.rect.y > 510:
-            done = True
-            continue
-
-        if player.rect.x > max_x:
-            score += (player.rect.x - max_x)
-            max_x = player.rect.x
-
-        if player.rect.right >= 500:
-            diff = player.rect.right - 500
-            score += diff
-            max_x = player.rect.right
-
-
-        print(player.rect.x)
-        print(player.rect)
-        print(max_x)
-        print(score)
-        print("===========")
-
-        current_time = int(time.time())
-        score += last_used_time * 20
-        score -= current_time * 20
-
-        last_used_time = current_time
-
-        print(begin_time)
-        print(last_used_time)
-        print(score)
-        print("==============================")
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 done = True
@@ -554,6 +523,22 @@ def main():
 
         # Go ahead and update the screen with what we've drawn.
         pygame.display.flip()
+
+        if score < -1000 or player.rect.y > 510:
+            done = True
+            continue
+
+        if current_position < max_x:
+            score += (max_x - current_position)
+            max_x = current_position
+
+        print(score)
+
+        current_time = int(time.time())
+        score += last_used_time * 50
+        score -= current_time * 50
+
+        last_used_time = current_time
 
 
     # Be IDLE friendly. If you forget this line, the program will 'hang'
