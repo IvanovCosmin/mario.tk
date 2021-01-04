@@ -14,6 +14,9 @@ BLUE = (0, 0, 255)
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 
+import numpy as np
+
+
 LOWER_BORDER = 50
 LOWER_BORDER_LIMIT = SCREEN_HEIGHT - LOWER_BORDER
 
@@ -402,7 +405,8 @@ class Level_02(Level):
 
 def main():
     """ Main Program """
-    agent = ch4d.DQN(SCREEN_HEIGHT * SCREEN_WIDTH // (10 * 10), 3)
+    max_score = 0
+    agent = ch4d.DQN(SCREEN_HEIGHT * SCREEN_WIDTH * 2 // (10 * 10), 3)
     steps = []
     trials = 1000
 
@@ -447,38 +451,61 @@ def main():
         import matplotlib.pyplot as plt
 
         score = 0
-        COMPUTE_ONCE_EVERY = 15
+        COMPUTE_ONCE_EVERY = 10
         max_x = player.rect.x + current_level.world_shift
         begin_time = int(time.time())
+        last_right_time = int(time.time())
         last_used_time = begin_time
         frame_counter = 0
+        index_action = 0
         doing_bizniz = False
-        action = None
+        action = 1
         agent_last_score = None
-
+        cur_state = None
+        decision_player_x = -100
+        old_frame = None
+        last_action = 1
         # -------- Main Program Loop -----------
-        while not done:
-            
+        while not done: 
             frame_counter += 1
-            if frame_counter == COMPUTE_ONCE_EVERY:
+            if frame_counter == COMPUTE_ONCE_EVERY: #and doing_bizniz == False:
                 frame_counter = 0
                 doing_bizniz = True
+                old_frame = cur_state
                 cur_state = pygame.surfarray.array3d(pygame.display.get_surface())
                 cur_state = ch4d.rgb2gray(cur_state)
                 cur_state = ch4d.block_mean(cur_state, 10)
-                
+                index_action += 1
                 agent_last_score = score
-                action = agent.act(cur_state)
+                last_action = action
+                cur_state[0][0] = last_action * 100
+                if old_frame is None:
+                    old_frame = cur_state
+
+                action = agent.act(np.concatenate([cur_state, old_frame]))
+                print("Action_no", index_action)
                 print("Doing: ", action)
-                if player.change_x < 0 or player.change_x > 0:
+                action_complement = {
+                    0: 2,
+                    1: -1,
+                    2: 0
+                }
+
+                if (player.change_x < 0 or player.change_x > 0) and action_complement[action] != last_action:
                     player.stop()
+
+                decision_player_x = player.rect.x - current_level.world_shift
+                decision_player_y = player.rect.y
 
                 if action == 0:
                     player.go_left()
                 elif action == 1:
+                    player_jump_x = player.rect.x - current_level.world_shift
                     player.jump()
                 elif action == 2:
                     player.go_right()
+                    last_right_time = int(time.time())
+
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -535,42 +562,61 @@ def main():
 
             # ALL CODE TO DRAW SHOULD GO ABOVE THIS COMMENT
 
+            score = (player.rect.x - current_level.world_shift) / 100
+            
+            score += ((((player.rect.x - current_level.world_shift)) // 10) * 1000) 
 
             if player.rect.y > 510:
-                score = -10000
-
-            if score < -125: 
+                score = agent_last_score - 10
                 done = True
 
-            if current_position < max_x:
-                score += (max_x - current_position)
-                max_x = current_position
+            if (player.rect.x - current_level.world_shift) == decision_player_x:
+                score *= 0.98
 
+            if int(time.time()) - last_right_time > 3:
+                done = True
 
-            print(score)
+            if int(time.time()) - begin_time > 30:
+                done = True
+            
+            if agent_last_score != None and agent_last_score < 0:
+                done = True
+                score = -100
 
-            current_time = int(time.time())
-            score += last_used_time * 50
-            score -= current_time * 50
+            if score < -250: 
+                done = True
+            
+            
+            #print(score)
 
-            last_used_time = current_time
+            # current_time = int(time.time())
+            # score += last_used_time * 50
+            # score -= current_time * 50
 
-            if doing_bizniz == True:
-                if current_position > max_x:
-                    score -= 10
+            # last_used_time = current_time
 
+            if doing_bizniz == True or done == True:
                 agent_score_delta = score - agent_last_score
 
-                new_state = pygame.surfarray.array3d(pygame.display.get_surface())
-                new_state = ch4d.rgb2gray(new_state)
-                new_state = ch4d.block_mean(new_state, 10)
 
-                agent.remember(cur_state, action, agent_score_delta, new_state, done)
+                if old_frame is not None and (decision_player_x != player.rect.x - current_level.world_shift or player.rect.y != decision_player_y):
+                    print("added to memory")
+                    print(decision_player_x)
+                    print(player.rect.x - current_level.world_shift)
+
+                    new_state = pygame.surfarray.array3d(pygame.display.get_surface())
+                    new_state = ch4d.rgb2gray(new_state)
+                    new_state = ch4d.block_mean(new_state, 10)
+                    new_state[0][0] = action * 100
+
+                    print("pushed score", agent_score_delta/100)
+
+                    agent.remember(np.concatenate([cur_state, old_frame]), action, agent_score_delta / 100, np.concatenate([new_state, cur_state]), done)
 
                 doing_bizniz = False
 
             # Limit to 60 frames per second
-            clock.tick(120)
+            clock.tick(60)
 
             # Go ahead and update the screen with what we've drawn.
             pygame.display.flip()
@@ -579,6 +625,10 @@ def main():
         # Be IDLE friendly. If you forget this line, the program will 'hang'
         # on exit.
         if done == True:
+            if score > max_score:
+                agent.save_model(str(begin_time) + str(score))
+                max_score = score
+
             agent.replay()
             agent.target_train()
         

@@ -1,7 +1,7 @@
 import numpy as np
 import random
 from keras.models import Sequential
-from keras.layers import Dense, Dropout
+from keras.layers import Dense, Dropout, Conv2D
 from keras.optimizers import Adam
 
 from collections import deque
@@ -33,8 +33,8 @@ class DQN:
         self.gamma = 0.85
         self.epsilon = 1.0
         self.epsilon_min = 0.01
-        self.epsilon_decay = 0.999
-        self.learning_rate = 0.005
+        self.epsilon_decay = 0.995
+        self.learning_rate = 0.05
         self.tau = .125
 
         self.model        = self.create_model()
@@ -43,8 +43,8 @@ class DQN:
     def create_model(self):
         model   = Sequential()
         state_shape  = self.input_shape
-        model.add(Dense(24, input_dim=state_shape, activation="relu"))
-        model.add(Dense(48, activation="relu"))
+        model.add(Dense(48, input_dim=state_shape, activation="relu"))
+        model.add(Dense(64, activation="relu"))
         model.add(Dense(24, activation="relu"))
         model.add(Dense(self.output_shape))
         model.compile(loss="mean_squared_error",
@@ -58,7 +58,10 @@ class DQN:
             return np.random.randint(0, self.output_shape)
 
         state = np.array([state.reshape((self.input_shape,))])
-        return np.argmax(self.model.predict(state))
+        state = state/255
+        predicted = self.model.predict(state)[0]
+        print("I do think ", predicted)
+        return np.argmax(predicted)
 
     def remember(self, state, action, reward, new_state, done):
         self.memory.append([state, action, reward, new_state, done])
@@ -71,6 +74,7 @@ class DQN:
         samples = random.sample(self.memory, batch_size)
         for sample in samples:
             state, action, reward, new_state, done = sample
+            state /= 255
             target = self.target_model.predict(np.array([state.reshape(self.input_shape,)]))
             if done:
                 target[0][action] = reward
