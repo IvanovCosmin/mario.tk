@@ -1,8 +1,9 @@
 import numpy as np
 import random
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Conv2D
+from keras.layers import Dense, Dropout, Conv2D, MaxPooling2D, Flatten
 from keras.optimizers import Adam
+from keras.losses import Huber
 
 from collections import deque
 
@@ -24,14 +25,19 @@ def rgb2gray(img):
     img_gray = R * 299. / 1000 + G * 587. / 1000 + B * 114. / 1000
     return img_gray.astype(np.uint8)
 
+def normalize_img(img):
+    return img / 255
+
 class DQN:
     def __init__(self, input_shape, output_shape):
         self.input_shape  = input_shape
         self.output_shape = output_shape
-        self.memory  = deque(maxlen=2000)
+        self.memory  = deque(maxlen=10000)
+        self.best_memories = deque(maxlen=100)
+        self.random_memories = deque(maxlen=100)
         
         self.gamma = 0.85
-        self.epsilon = 1.0
+        self.epsilon = 1
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.learning_rate = 0.05
@@ -43,11 +49,13 @@ class DQN:
     def create_model(self):
         model   = Sequential()
         state_shape  = self.input_shape
-        model.add(Dense(48, input_dim=state_shape, activation="relu"))
-        model.add(Dense(64, activation="relu"))
-        model.add(Dense(24, activation="relu"))
+        model.add(Conv2D(32, 8, strides=(4, 4), padding="valid",activation="relu", input_shape = state_shape))
+        model.add(Conv2D(64, 4, strides=(2, 2), padding="valid",activation="relu", input_shape = state_shape))
+        model.add(Conv2D(64, 3, strides=(1, 1), padding="valid",activation="relu", input_shape = state_shape))
+        model.add(Flatten())
+        model.add(Dense(512, activation="relu"))
         model.add(Dense(self.output_shape))
-        model.compile(loss="mean_squared_error",
+        model.compile(loss=Huber(),
             optimizer=Adam(lr=self.learning_rate))
         return model
 
@@ -57,32 +65,46 @@ class DQN:
         if np.random.random() < self.epsilon:
             return np.random.randint(0, self.output_shape)
 
-        state = np.array([state.reshape((self.input_shape,))])
-        state = state/255
+        state = np.array([state.reshape(self.input_shape)])
         predicted = self.model.predict(state)[0]
         print("I do think ", predicted)
         return np.argmax(predicted)
 
     def remember(self, state, action, reward, new_state, done):
         self.memory.append([state, action, reward, new_state, done])
+    
+    def remember_best(self, state, action, reward, new_state, done):
+        self.best_memories.append([state, action, reward, new_state, done])
+
+    def remember_random(self, state, action, reward, new_state, done):
+        self.random_memories.append([state, action, reward, new_state, done])
 
     def replay(self):
         batch_size = 32
-        if len(self.memory) < batch_size: 
-            return
+        memory = []
+        memory.extend(self.memory)
+        memory.extend(self.best_memories)
+        memory.extend(self.random_memories)
 
-        samples = random.sample(self.memory, batch_size)
+        if len(memory) < batch_size: 
+            return
+        
+        samples = random.sample(memory, batch_size)
         for sample in samples:
             state, action, reward, new_state, done = sample
-            state /= 255
-            target = self.target_model.predict(np.array([state.reshape(self.input_shape,)]))
+            import matplotlib.pyplot as plt
+            #plt.imshow(state, cmap=plt.get_cmap('gray')) #Needs to be in row,col order
+            #plt.savefig("old.png")
+            #plt.imshow(new_state, cmap=plt.get_cmap('gray')) #Needs to be in row,col order
+            #plt.savefig("nou.png")
+            target = self.target_model.predict(np.array([state.reshape(self.input_shape)]))
             if done:
                 target[0][action] = reward
             else:
-                target_model_pred = self.target_model.predict(np.array([new_state.reshape(self.input_shape,)]))
+                target_model_pred = self.target_model.predict(np.array([new_state.reshape(self.input_shape)]))
                 Q_future = max(target_model_pred[0])
                 target[0][action] = reward + Q_future * self.gamma
-            self.model.fit(np.array([state.reshape(self.input_shape,)]), target, epochs=1, verbose=0)
+            self.model.fit(np.array([state.reshape(self.input_shape)]), target, epochs=1, verbose=0)
 
     def target_train(self):
         weights = self.model.get_weights()

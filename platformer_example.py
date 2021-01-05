@@ -1,5 +1,6 @@
 import pygame
 import the_brain as ch4d
+import cProfile
 
 # Global constants
 
@@ -273,7 +274,10 @@ class Level_01(Level):
         level = [
 
             # podelele
-            [2800,  LOWER_BORDER, 0,    LOWER_BORDER_LIMIT],
+            [500,  LOWER_BORDER, 0,    LOWER_BORDER_LIMIT],
+            
+            [2800,  LOWER_BORDER, 600,    LOWER_BORDER_LIMIT],
+            
             [800,   LOWER_BORDER, 2900, LOWER_BORDER_LIMIT],
             [1500, LOWER_BORDER, 3800, LOWER_BORDER_LIMIT],
             [4000, LOWER_BORDER, 5400, LOWER_BORDER_LIMIT],
@@ -405,8 +409,9 @@ class Level_02(Level):
 
 def main():
     """ Main Program """
+    DOWNSCALE_FACTOR = 5
     max_score = 0
-    agent = ch4d.DQN(SCREEN_HEIGHT * SCREEN_WIDTH * 2 // (10 * 10), 3)
+    agent = ch4d.DQN((SCREEN_HEIGHT * 2 // DOWNSCALE_FACTOR, SCREEN_WIDTH // DOWNSCALE_FACTOR, 1), 5)
     steps = []
     trials = 1000
 
@@ -415,6 +420,7 @@ def main():
         pygame.init()
         
 
+        pain_counter = 0
         # Set the height and width of the screen
         size = [SCREEN_WIDTH, SCREEN_HEIGHT]
         screen = pygame.display.set_mode(size)
@@ -451,7 +457,7 @@ def main():
         import matplotlib.pyplot as plt
 
         score = 0
-        COMPUTE_ONCE_EVERY = 10
+        COMPUTE_ONCE_EVERY = 20
         max_x = player.rect.x + current_level.world_shift
         begin_time = int(time.time())
         last_right_time = int(time.time())
@@ -474,37 +480,43 @@ def main():
                 old_frame = cur_state
                 cur_state = pygame.surfarray.array3d(pygame.display.get_surface())
                 cur_state = ch4d.rgb2gray(cur_state)
-                cur_state = ch4d.block_mean(cur_state, 10)
+                cur_state = ch4d.block_mean(cur_state, DOWNSCALE_FACTOR)
+                cur_state = ch4d.normalize_img(cur_state)
                 index_action += 1
                 agent_last_score = score
                 last_action = action
-                cur_state[0][0] = last_action * 100
+                cur_state[0][0] = last_action
                 if old_frame is None:
                     old_frame = cur_state
 
                 action = agent.act(np.concatenate([cur_state, old_frame]))
                 print("Action_no", index_action)
                 print("Doing: ", action)
-                action_complement = {
-                    0: 2,
-                    1: -1,
-                    2: 0
-                }
 
-                if (player.change_x < 0 or player.change_x > 0) and action_complement[action] != last_action:
+
+
+                if player.change_x < 0 or player.change_x > 0:
                     player.stop()
 
                 decision_player_x = player.rect.x - current_level.world_shift
                 decision_player_y = player.rect.y
 
                 if action == 0:
+                    player.jump()
                     player.go_left()
                 elif action == 1:
+                    player.go_left()
+                elif action == 2:
                     player_jump_x = player.rect.x - current_level.world_shift
                     player.jump()
-                elif action == 2:
+                elif action == 3:
                     player.go_right()
                     last_right_time = int(time.time())
+                elif action == 4:
+                    player.go_right()
+                    player.jump()
+                    last_right_time = int(time.time())
+
 
 
             for event in pygame.event.get():
@@ -595,28 +607,38 @@ def main():
 
             # last_used_time = current_time
 
-            if doing_bizniz == True or done == True:
+            if doing_bizniz == True: #or done == True:
                 agent_score_delta = score - agent_last_score
 
 
-                if old_frame is not None and (decision_player_x != player.rect.x - current_level.world_shift or player.rect.y != decision_player_y):
+                if old_frame is not None:
                     print("added to memory")
                     print(decision_player_x)
                     print(player.rect.x - current_level.world_shift)
 
                     new_state = pygame.surfarray.array3d(pygame.display.get_surface())
                     new_state = ch4d.rgb2gray(new_state)
-                    new_state = ch4d.block_mean(new_state, 10)
-                    new_state[0][0] = action * 100
-
+                    new_state = ch4d.block_mean(new_state, DOWNSCALE_FACTOR)
+                    new_state = ch4d.normalize_img(new_state)
+                    new_state[0][0] = action
+                    if (decision_player_x == player.rect.x - current_level.world_shift and player.rect.y == decision_player_y):
+                        agent_score_delta = -100 + pain_counter
+                        pain_counter -= 100
+                    else:
+                        pain_counter = 0
                     print("pushed score", agent_score_delta/100)
+
+                    if score > max_score:
+                        print("new best memory")
+                        agent.remember_best(np.concatenate([cur_state, old_frame]), action, agent_score_delta / 50, np.concatenate([new_state, cur_state]), done)
+                    
 
                     agent.remember(np.concatenate([cur_state, old_frame]), action, agent_score_delta / 100, np.concatenate([new_state, cur_state]), done)
 
                 doing_bizniz = False
 
             # Limit to 60 frames per second
-            clock.tick(60)
+            clock.tick(120)
 
             # Go ahead and update the screen with what we've drawn.
             pygame.display.flip()
@@ -625,9 +647,9 @@ def main():
         # Be IDLE friendly. If you forget this line, the program will 'hang'
         # on exit.
         if done == True:
-            if score > max_score:
-                agent.save_model(str(begin_time) + str(score))
-                max_score = score
+            # if score > max_score and score > 0:
+            #     agent.save_model(str(begin_time) + str(score))
+            #     max_score = score
 
             agent.replay()
             agent.target_train()
